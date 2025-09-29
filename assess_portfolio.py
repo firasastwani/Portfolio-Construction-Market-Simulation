@@ -15,27 +15,29 @@ def plot_normalized_data(df, title="Normalized prices", xlabel="Date", ylabel="N
     if df is None or df.empty: 
         return
 
-    normed = df / df.iloc[0]
+    # Support DataFrame (equal-weighted aggregation) or Series (already a single portfolio)
+    if isinstance(df, pd.Series):
+        portfolio_norm = (df / df.iloc[0]).rename('Portfolio')
+    else:
+        normed = df / df.iloc[0]
+        portfolio_norm = normed.mean(axis=1).rename('Portfolio')
 
     dates = df.index
-    # Ensure we pass a DatetimeIndex to avoid deprecated Period behavior
-    if not isinstance(dates, pd.DatetimeIndex):
-        dates = pd.DatetimeIndex(dates)
-    prices_SPY = get_data(['SPY'], dates)    
 
-    normed_SPY = prices_SPY / prices_SPY.iloc[0]
+    prices_SPY = get_data(['SPY'], dates)
+    spy_norm = (prices_SPY['SPY'] / prices_SPY['SPY'].iloc[0]).rename('SPY')
 
-    ax = normed.plot(figsize=(10,6), linewidth=1.5)
-
-    normed_SPY.plot(ax=ax, linewidth = 2.5, color = 'black', label = 'SPY')
+    # Plot only the portfolio and SPY series
+    ax = portfolio_norm.plot(figsize=(10,6), linewidth=2.0, label='Portfolio')
+    spy_norm.plot(ax=ax, linewidth=2.0, color='black', label='SPY')
 
     ax.set_title(title)
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
-    ax.grid(True, linestyle='--', alpha = 0.3)
+    ax.grid(True, linestyle='--')
     ax.legend(loc='best')
     plt.tight_layout()
-    plt.show()
+    plt.show() 
     
     return
 
@@ -171,7 +173,6 @@ if __name__ == "__main__":
     dates = pd.date_range(start_date, end_date)
     prices = get_data(symbols, dates)
     
-    plot_normalized_data(prices)
 
     # Step 1.1: Normalize prices
     normed = prices / prices.iloc[0]
@@ -181,6 +182,9 @@ if __name__ == "__main__":
 
     prices_SPY = get_data(['SPY'], dates)
     port_val = get_portfolio_value(prices, allocations, start_val)
+
+    plot_normalized_data(port_val)
+
 
     stats = get_portfolio_stats(port_val, prices_SPY['SPY'], rfr=risk_free_rate, sf=sample_freq)
 
