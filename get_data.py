@@ -6,6 +6,9 @@ def get_data(symbols, dates, path="data"):
     """ Read stock data (adjusted close) for given symbols from CSV files in a 'data' directory."""
 
     # Initialize an empty DataFrame to hold the stock prices for all symbols
+    # Ensure provided index is a DatetimeIndex (avoid deprecated PeriodIndex with BDay)
+    if not isinstance(dates, pd.DatetimeIndex):
+        dates = pd.DatetimeIndex(dates)
     df_final = pd.DataFrame(index=dates)
 
     # Loop through each symbol to read and process data
@@ -22,11 +25,14 @@ def get_data(symbols, dates, path="data"):
         # Rename the 'Adj Close' column to the stock symbol
         df_temp = df_temp.rename(columns={'Adj Close': symbol})
 
+        # Ensure the read index is a DatetimeIndex
+        if not isinstance(df_temp.index, pd.DatetimeIndex):
+            df_temp.index = pd.to_datetime(df_temp.index)
+
         # Join the stock data with the main DataFrame (df_final)
         df_final = df_final.join(df_temp, how='left')
 
-    return df_final
-
+    return df_final.dropna()
 
 # Example usage inside your main script
 if __name__ == "__main__":
