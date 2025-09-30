@@ -9,32 +9,62 @@ from get_data import get_data
 
 def plot_normalized_data(df, title="Normalized prices", xlabel="Date", ylabel="Normalized price"):
     """Normalize given stock prices and plot for comparison."""
-    # TODO: Implement normalization and plotting
-    # Plot comparison with market (SPY)
-
-    if df is None or df.empty: 
+    if df is None: 
         return
 
-    # Support DataFrame (equal-weighted aggregation) or Series (already a single portfolio)
-    if isinstance(df, pd.Series):
-        portfolio_norm = (df / df.iloc[0]).rename('Portfolio')
+    # Handle list of portfolios or single portfolio/DataFrame
+    if isinstance(df, list):
+        # Multiple portfolios provided
+        portfolios_to_plot = []
+        labels = []
+        
+        for i, portfolio in enumerate(df):
+            if isinstance(portfolio, pd.Series):
+                portfolio_norm = (portfolio / portfolio.iloc[0])
+                if i == 0:
+                    labels.append('Original Portfolio')
+                else:
+                    labels.append(f'Portfolio {i+1}')
+                portfolios_to_plot.append(portfolio_norm)
+        
+        # Get dates from first portfolio
+        dates = df[0].index
     else:
-        normed = df / df.iloc[0]
-        portfolio_norm = normed.mean(axis=1).rename('Portfolio')
+        # Single portfolio or DataFrame
+        if df.empty:
+            return
+            
+        if isinstance(df, pd.Series):
+            portfolio_norm = (df / df.iloc[0]).rename('Portfolio')
+            portfolios_to_plot = [portfolio_norm]
+            labels = ['Portfolio']
+        else:
+            normed = df / df.iloc[0]
+            portfolio_norm = normed.mean(axis=1).rename('Portfolio')
+            portfolios_to_plot = [portfolio_norm]
+            labels = ['Portfolio']
+        
+        dates = df.index
 
-    dates = df.index
-
+    # Get SPY data
     prices_SPY = get_data(['SPY'], dates)
     spy_norm = (prices_SPY['SPY'] / prices_SPY['SPY'].iloc[0]).rename('SPY')
 
-    # Plot only the portfolio and SPY series
-    ax = portfolio_norm.plot(figsize=(10,6), linewidth=2.0, label='Portfolio')
-    spy_norm.plot(ax=ax, linewidth=2.0, color='black', label='SPY')
+    # Plot portfolios
+    ax = None
+    for i, (portfolio_norm, label) in enumerate(zip(portfolios_to_plot, labels)):
+        if ax is None:
+            ax = portfolio_norm.plot(figsize=(12, 8), linewidth=2.0, label=label)
+        else:
+            portfolio_norm.plot(ax=ax, linewidth=2.0, label=label)
+    
+    # Add SPY
+    spy_norm.plot(ax=ax, linewidth=2.5, color='black', label='SPY')
 
     ax.set_title(title)
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
-    ax.grid(True, linestyle='--')
+    ax.grid(True, linestyle='--', alpha=0.3)
     ax.legend(loc='best')
     plt.tight_layout()
     plt.show() 
@@ -44,7 +74,6 @@ def plot_normalized_data(df, title="Normalized prices", xlabel="Date", ylabel="N
 def get_portfolio_stats(port_val, prices_SPY, rfr=0.0, sf=252.0, calc_optional=False):
     """Calculate portfolio statistics: core and optional metrics."""
 
-    # TODO: Calculate core statistics (cumulative return, avg daily return, volatility, Sharpe ratio)
     cum_ret, avg_daily_ret, std_daily_ret, sharpe_ratio, beta, alpha = 0, 0, 0, 0, 0, 0
 
     cum_ret = (port_val.iloc[-1] / port_val.iloc[0]) - 1
@@ -59,21 +88,17 @@ def get_portfolio_stats(port_val, prices_SPY, rfr=0.0, sf=252.0, calc_optional=F
     # Remove any remaining NaN values
     aligned = aligned.dropna()
     
-    # Check if we have enough data points
-    if len(aligned) < 2:
-        return 0, 0, 0, 0, 0, 0, {}
-    
     avg_daily_ret = aligned['portfolio'].mean()
     std_daily_ret = aligned['portfolio'].std()
 
     # Sharpe ratio using excess returns
     excess_daily = aligned['portfolio'] - rfr  # rfr must be daily
-    sharpe_ratio = np.sqrt(sf) * (excess_daily.mean() / excess_daily.std()) if excess_daily.std() != 0 else 0.0
+    sharpe_ratio = np.sqrt(sf) * (excess_daily.mean() / excess_daily.std())
     
     # Beta = Cov(portfolio, market) / Var(market)
     cov_pm = aligned.cov().loc['portfolio', 'market']
     var_m = aligned['market'].var()
-    beta = cov_pm / var_m if var_m != 0 and not np.isnan(cov_pm) and not np.isnan(var_m) else 0.0
+    beta = cov_pm / var_m 
     
     market_excess_mean = (aligned['market'] - rfr).mean()
     expected_port_mean = rfr + beta * market_excess_mean
@@ -164,6 +189,10 @@ if __name__ == "__main__":
     start_date = dt.datetime(2019, 1, 1)
     end_date = dt.datetime(2019, 12, 31)
     symbols = ['GOOG', 'AAPL', 'GLD', 'XOM']
+
+
+    my_port = ['QQQ', 'CRM', 'JPM', 'HD', 'GLD']
+
     allocations = [0.2, 0.3, 0.4, 0.1]
     start_val = 1000000
     risk_free_rate = 0.0
@@ -173,7 +202,6 @@ if __name__ == "__main__":
     dates = pd.date_range(start_date, end_date)
     prices = get_data(symbols, dates)
     
-
     # Step 1.1: Normalize prices
     normed = prices / prices.iloc[0]
     print('"normed" type =', type(normed))
@@ -183,13 +211,35 @@ if __name__ == "__main__":
     prices_SPY = get_data(['SPY'], dates)
     port_val = get_portfolio_value(prices, allocations, start_val)
 
-    plot_normalized_data(port_val)
+    # Calculate my_port portfolio
+    my_port_allocations = [1.0/len(my_port)] * len(my_port)  # Equal weight
+    my_port_prices = get_data(my_port, dates)
+    my_port_val = get_portfolio_value(my_port_prices, my_port_allocations, start_val)
 
+    # Plot both portfolios and SPY
+    plot_normalized_data([port_val, my_port_val], title="Portfolio Comparison: Original vs My Portfolio vs SPY")
 
+    # Calculate statistics for both portfolios
     stats = get_portfolio_stats(port_val, prices_SPY['SPY'], rfr=risk_free_rate, sf=sample_freq)
+    my_stats = get_portfolio_stats(my_port_val, prices_SPY['SPY'], rfr=risk_free_rate, sf=sample_freq)
 
-    print("get_portfolio_stats() returns:")
-    print(stats)
+    
+    # Unpack stats for pretty printing
+    cr, adr, sddr, sr, beta, alpha, optional_stats = stats
+    correlation = port_val.pct_change(fill_method=None).corr(prices_SPY['SPY'].pct_change(fill_method=None))
+    ev = port_val.iloc[-1]
+    print("=== FORMATTED ORIGINAL PORTFOLIO STATISTICS ===")
+    print_portfolio_stats(cr, adr, sddr, sr, start_val, ev, correlation, beta, alpha, optional_stats)
+    print()
+    
+    
+    # Unpack my_stats for pretty printing
+    my_cr, my_adr, my_sddr, my_sr, my_beta, my_alpha, my_optional_stats = my_stats
+    my_correlation = my_port_val.pct_change(fill_method=None).corr(prices_SPY['SPY'].pct_change(fill_method=None))
+    my_ev = my_port_val.iloc[-1]
+    print("=== FORMATTED MY PORTFOLIO STATISTICS ===")
+    print_portfolio_stats(my_cr, my_adr, my_sddr, my_sr, start_val, my_ev, my_correlation, my_beta, my_alpha, my_optional_stats)
+    print()
     
     # Step 1.2: Calculate Daily Portfolio Value
     print("Step 1.2: Calculate Daily Portfolio Value")
@@ -199,16 +249,3 @@ if __name__ == "__main__":
     print("get_portfolio_value() returns:")
     print(port_val)
     print()
-
-    # TODO: Assess the portfolio (students should implement the missing parts)
-    cr, adr, sddr, sr, ev, beta, alpha, optional_stats \
-        = assess_portfolio(
-            start_date, end_date,
-            symbols,
-            allocations,
-            sv=start_val,
-            rfr=risk_free_rate,
-            sf=sample_freq,
-            gen_plot=True,
-            calc_optional=True
-    )
